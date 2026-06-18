@@ -19,14 +19,10 @@ services:
     depends_on:
       - socket-proxy
     environment:
-      - DOCKER_HOST=tcp://socket-proxy:2375
+      - TRAEFIK_CERTIFICATESRESOLVERS_LETSENCRYPT_ACME_EMAIL=${ACME_EMAIL}
+      - TRAEFIK_PROVIDERS_DOCKER_NETWORK=${NETWORK_NAME:-proxy-network}
     command:
       - "--configfile=/traefik.yml"
-      - "--providers.docker.endpoint=tcp://socket-proxy:2375"
-      - "--providers.docker.network=${NETWORK_NAME:-proxy-network}"
-      - "--certificatesresolvers.letsencrypt.acme.email=${ACME_EMAIL}"
-      - "--certificatesresolvers.letsencrypt.acme.storage=/acme.json"
-      - "--certificatesresolvers.letsencrypt.acme.tlschallenge=true"
     ports:
       - "80:80"
       - "443:443"

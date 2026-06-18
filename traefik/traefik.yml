@@ -1,7 +1,3 @@
-# Traefik static configuration
-# Secrets (ACME email, network name) are passed via CLI flags in docker-compose.yml
-# so this file contains no sensitive values and can be committed safely.
-
 api:
   dashboard: true
 
@@ -14,8 +10,25 @@ entryPoints:
           to: websecure
           scheme: https
           permanent: true
+      encodedCharacters:
+        allowEncodedSlash: true
+        allowEncodedBackSlash: true
+        allowEncodedNullCharacter: true
+        allowEncodedSemicolon: true
+        allowEncodedPercent: true
+        allowEncodedQuestionMark: true
+        allowEncodedHash: true
   websecure:
     address: ":443"
+    http:
+      encodedCharacters:
+        allowEncodedSlash: true
+        allowEncodedBackSlash: true
+        allowEncodedNullCharacter: true
+        allowEncodedSemicolon: true
+        allowEncodedPercent: true
+        allowEncodedQuestionMark: true
+        allowEncodedHash: true
 
 providers:
   docker:
@@ -24,6 +37,12 @@ providers:
   file:
     directory: /config
     watch: true
+
+certificatesResolvers:
+  letsencrypt:
+    acme:
+      storage: /acme.json
+      tlsChallenge: {}
 
 log:
   level: INFO
