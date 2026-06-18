@@ -1,0 +1,30 @@
+# Traefik static configuration
+# Secrets (ACME email, network name) are passed via CLI flags in docker-compose.yml
+# so this file contains no sensitive values and can be committed safely.
+
+api:
+  dashboard: true
+
+entryPoints:
+  web:
+    address: ":80"
+    http:
+      redirections:
+        entryPoint:
+          to: websecure
+          scheme: https
+          permanent: true
+  websecure:
+    address: ":443"
+
+providers:
+  docker:
+    exposedByDefault: false
+  file:
+    directory: /config
+    watch: true
+
+log:
+  level: INFO
+
+accessLog: {}
