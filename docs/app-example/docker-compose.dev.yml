@@ -1,0 +1,13 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# DEV override — exposed port for local testing.
+#
+# Usage:
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
+#   → http://localhost:3000
+# ─────────────────────────────────────────────────────────────────────────────
+
+services:
+  myapp:
+    restart: "no"
+    ports:
+      - "3000:3000"

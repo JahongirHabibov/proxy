@@ -1,42 +1,22 @@
 # ─────────────────────────────────────────────────────────────────────────────
-# App project template — copy labels into your project's docker-compose.yml
+# BASE — shared between all environments.
+# Do NOT run directly. Always combine with an override:
+#
+#   Dev:  docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
+#   Prod: docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
 #
 # Before using, replace ALL occurrences of:
-#   example.com   → your actual domain (e.g. mysite.de)
-#   myapp         → unique short name with no dots or spaces (e.g. mysite)
-#   3000          → the port your container listens on internally
+#   your-app-image:latest  → your actual image
+#   myapp                  → unique short name, no dots or spaces (e.g. mysite)
+#   3000                   → the port your container listens on internally
 # ─────────────────────────────────────────────────────────────────────────────
 
 services:
   myapp:
     image: your-app-image:latest
-    restart: unless-stopped
-    networks:
-      - proxy-network
-    labels:
-      - "traefik.enable=true"
-
-      # ── Main domain: example.com ──────────────────────────────────────────
-      - "traefik.http.routers.myapp.rule=Host(`example.com`)"
-      - "traefik.http.routers.myapp.entrypoints=websecure"
-      - "traefik.http.routers.myapp.tls.certresolver=letsencrypt"
-      - "traefik.http.routers.myapp.service=myapp-svc"
-      - "traefik.http.routers.myapp.middlewares=security-headers@file"
-
-      # ── www → non-www redirect: www.example.com → example.com (301) ──────
-      - "traefik.http.routers.myapp-www.rule=Host(`www.example.com`)"
-      - "traefik.http.routers.myapp-www.entrypoints=websecure"
-      - "traefik.http.routers.myapp-www.tls.certresolver=letsencrypt"
-      - "traefik.http.routers.myapp-www.service=myapp-svc"
-      - "traefik.http.routers.myapp-www.middlewares=www-redirect@file"
-
-      # ── Internal container port ───────────────────────────────────────────
-      - "traefik.http.services.myapp-svc.loadbalancer.server.port=3000"
-
-# Reference the proxy network — do NOT define it here, only reference it.
-# The proxy project creates and owns this network.
-# NETWORK_NAME must match the value set in the proxy's .env file.
-networks:
-  proxy-network:
-    external: true
-    name: proxy-network
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3000/ || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s

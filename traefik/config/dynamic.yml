@@ -19,3 +19,16 @@ http:
         contentTypeNosniff: true
         browserXssFilter: true
         referrerPolicy: "strict-origin-when-cross-origin"
+
+    # gzip + brotli compression for text responses (replaces nginx gzip)
+    # Usage in app labels: traefik.http.routers.myapp.middlewares=compress@file
+    compress:
+      compress:
+        includedContentTypes:
+          - text/html
+          - text/css
+          - text/javascript
+          - application/javascript
+          - application/json
+          - application/xml
+          - image/svg+xml
