@@ -40,7 +40,7 @@ services:
       - "traefik.http.routers.traefik-dashboard.entrypoints=websecure"
       - "traefik.http.routers.traefik-dashboard.tls.certresolver=letsencrypt"
       - "traefik.http.routers.traefik-dashboard.service=api@internal"
-      - "traefik.http.routers.traefik-dashboard.middlewares=traefik-auth,security-headers@file"
+      - "traefik.http.routers.traefik-dashboard.middlewares=traefik-auth,security-headers@file,rate-limit-strict@file"
       # BasicAuth middleware — credentials set via DASHBOARD_USERS in .env
       - "traefik.http.middlewares.traefik-auth.basicauth.users=${DASHBOARD_USERS}"
 

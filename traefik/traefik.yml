@@ -4,6 +4,11 @@ api:
 entryPoints:
   web:
     address: ":80"
+    transport:
+      respondingTimeouts:
+        readTimeout: 5s
+        writeTimeout: 10s
+        idleTimeout: 30s
     http:
       redirections:
         entryPoint:
@@ -20,6 +25,11 @@ entryPoints:
         allowEncodedHash: true
   websecure:
     address: ":443"
+    transport:
+      respondingTimeouts:
+        readTimeout: 5s
+        writeTimeout: 30s
+        idleTimeout: 90s
     http:
       encodedCharacters:
         allowEncodedSlash: true

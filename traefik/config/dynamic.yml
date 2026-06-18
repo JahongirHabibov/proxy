@@ -32,3 +32,27 @@ http:
           - application/json
           - application/xml
           - image/svg+xml
+
+    # General rate limit for public-facing services
+    # 100 req/s avg, burst up to 200 — protects against light DoS
+    # Usage: traefik.http.routers.myapp.middlewares=rate-limit@file
+    rate-limit:
+      rateLimit:
+        average: 100
+        burst: 200
+        period: 1s
+        sourceCriterion:
+          ipStrategy:
+            depth: 1
+
+    # Strict rate limit for auth/admin endpoints (dashboard, login pages)
+    # 20 req/s avg, burst 30 — prevents brute-force
+    # Usage: traefik.http.routers.myapp.middlewares=rate-limit-strict@file
+    rate-limit-strict:
+      rateLimit:
+        average: 20
+        burst: 30
+        period: 1s
+        sourceCriterion:
+          ipStrategy:
+            depth: 1
