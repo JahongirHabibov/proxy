@@ -20,6 +20,7 @@ services:
       - DOCKER_HOST=tcp://socket-proxy:2375
     command:
       - "--configfile=/traefik.yml"
+      - "--providers.docker.endpoint=tcp://socket-proxy:2375"
       - "--providers.docker.network=${NETWORK_NAME:-proxy-network}"
       - "--certificatesresolvers.letsencrypt.acme.email=${ACME_EMAIL}"
       - "--certificatesresolvers.letsencrypt.acme.storage=/acme.json"
