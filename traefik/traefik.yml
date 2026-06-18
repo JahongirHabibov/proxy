@@ -42,7 +42,8 @@ certificatesResolvers:
   letsencrypt:
     acme:
       storage: /acme.json
-      tlsChallenge: {}
+      httpChallenge:
+        entryPoint: web
 
 log:
   level: INFO
