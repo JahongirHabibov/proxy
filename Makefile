@@ -1,0 +1,26 @@
+.PHONY: setup up down logs restart gen-password
+
+setup:
+	@test -f .env || (cp .env.example .env && echo "Created .env from .env.example — fill in your values before running 'make up'")
+	@touch acme.json && chmod 600 acme.json
+	@echo "acme.json: chmod 600 OK"
+
+up:
+	docker compose up -d
+
+down:
+	docker compose down
+
+logs:
+	docker compose logs -f traefik
+
+restart:
+	docker compose restart traefik
+
+gen-password:
+	@which htpasswd > /dev/null 2>&1 || (echo "ERROR: htpasswd not found. Install with: sudo apt install apache2-utils" && exit 1)
+	@read -p "Username: " user; \
+	read -s -p "Password: " pass; echo; \
+	echo ""; \
+	echo "Paste this into DASHBOARD_USERS in .env:"; \
+	echo "$$(htpasswd -nb $$user $$pass | sed 's/\$$/\$\$\$$/g')"

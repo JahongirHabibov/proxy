@@ -1,0 +1,11 @@
+
+
+# Custom
+*.log
+*.tmp
+tmp-*
+*superpowers*
+
+# Secrets and certs — never commit these
+.env
+acme.json
