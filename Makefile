@@ -2,8 +2,8 @@
 
 setup:
 	@test -f .env || (cp .env.example .env && echo "Created .env from .env.example — fill in your values before running 'make up'")
-	@touch acme.json && chmod 600 acme.json
-	@echo "acme.json: chmod 600 OK"
+	@mkdir -p traefik && touch traefik/acme.json && chmod 600 traefik/acme.json
+	@echo "traefik/acme.json: chmod 600 OK"
 
 up:
 	docker compose up -d

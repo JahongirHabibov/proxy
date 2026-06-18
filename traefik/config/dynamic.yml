@@ -1,0 +1,21 @@
+http:
+  middlewares:
+    # www → non-www permanent redirect (301)
+    # Usage in app labels: traefik.http.routers.myapp-www.middlewares=www-redirect@file
+    www-redirect:
+      redirectRegex:
+        regex: "^https://www\\.(.+)"
+        replacement: "https://${1}"
+        permanent: true
+
+    # Security headers applied to all production HTTPS routers
+    # Usage in app labels: traefik.http.routers.myapp.middlewares=security-headers@file
+    security-headers:
+      headers:
+        forceSTSHeader: true
+        stsSeconds: 31536000
+        stsIncludeSubdomains: true
+        stsPreload: true
+        contentTypeNosniff: true
+        browserXssFilter: true
+        referrerPolicy: "strict-origin-when-cross-origin"
