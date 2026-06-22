@@ -66,6 +66,8 @@ services:
       - "traefik.http.routers.traefik-dashboard.middlewares=traefik-auth,security-headers@file,rate-limit-strict@file"
       # BasicAuth middleware — credentials set via DASHBOARD_USERS in .env
       - "traefik.http.middlewares.traefik-auth.basicauth.users=${DASHBOARD_USERS}"
+      # Dummy port to satisfy the Docker provider's validation since ports are on the sidecar
+      - "traefik.http.services.traefik-proxy.loadbalancer.server.port=8080"
 
 networks:
   proxy-network:
