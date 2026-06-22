@@ -12,17 +12,19 @@ services:
     networks:
       - socket-proxy-internal
 
-  traefik:
-    image: traefik:v3.7.5
-    container_name: traefik
-    restart: unless-stopped
-    depends_on:
-      - socket-proxy
+  tailscale:
+    image: tailscale/tailscale:latest
+    container_name: tailscale
+    hostname: legisell-proxy-ts
     environment:
-      - TRAEFIK_CERTIFICATESRESOLVERS_LETSENCRYPT_ACME_EMAIL=${ACME_EMAIL}
-      - TRAEFIK_PROVIDERS_DOCKER_NETWORK=${NETWORK_NAME:-proxy-network}
-    command:
-      - "--configfile=/traefik.yml"
+      - TS_STATE_DIR=/var/lib/tailscale
+      - TS_USERSPACE=false
+    volumes:
+      - tailscale-state:/var/lib/tailscale
+      - /dev/net/tun:/dev/net/tun
+    cap_add:
+      - NET_ADMIN
+      - SYS_MODULE
     ports:
       - target: 80
         published: 80
@@ -32,13 +34,28 @@ services:
         published: 443
         protocol: tcp
         mode: host
+    networks:
+      - proxy-network
+      - socket-proxy-internal
+    restart: unless-stopped
+
+  traefik:
+    image: traefik:v3.7.5
+    container_name: traefik
+    restart: unless-stopped
+    depends_on:
+      - socket-proxy
+      - tailscale
+    network_mode: "service:tailscale"
+    environment:
+      - TRAEFIK_CERTIFICATESRESOLVERS_LETSENCRYPT_ACME_EMAIL=${ACME_EMAIL}
+      - TRAEFIK_PROVIDERS_DOCKER_NETWORK=${NETWORK_NAME:-proxy-network}
+    command:
+      - "--configfile=/traefik.yml"
     volumes:
       - ./traefik/traefik.yml:/traefik.yml:ro
       - ./traefik/config:/config:ro
       - ./traefik/acme.json:/acme.json
-    networks:
-      - proxy-network
-      - socket-proxy-internal
     labels:
       - "traefik.enable=true"
       # Dashboard router — secured with BasicAuth
@@ -56,3 +73,7 @@ networks:
     driver: bridge
   socket-proxy-internal:
     internal: true
+
+volumes:
+  tailscale-state:
+    name: tailscale-state
