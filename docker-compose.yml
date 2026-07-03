@@ -16,6 +16,14 @@ services:
     image: tailscale/tailscale:latest
     container_name: tailscale
     hostname: legisell-proxy-ts
+    # Explicit public upstream resolvers. Traefik shares this netns
+    # (network_mode: service:tailscale) and inherits this DNS. Without it the
+    # Docker embedded resolver (127.0.0.11) forwards to the host stub resolver
+    # (127.0.0.53 systemd-resolved), unreachable from the container netns →
+    # "server misbehaving" → ACME cannot resolve acme-v02.api.letsencrypt.org.
+    dns:
+      - 1.1.1.1
+      - 8.8.8.8
     environment:
       - TS_STATE_DIR=/var/lib/tailscale
       - TS_USERSPACE=false
