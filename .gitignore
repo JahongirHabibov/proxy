@@ -7,4 +7,12 @@ external_repos
 
 # Secrets and certs — never commit these
 .env
+.env.*
+!.env.example
 acme.json
+**/acme.json
+*.pem
+*.key
+*.crt
+ssl/
+traefik.yml
