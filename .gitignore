@@ -15,4 +15,3 @@ acme.json
 *.key
 *.crt
 ssl/
-traefik.yml
