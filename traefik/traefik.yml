@@ -1,5 +1,8 @@
-serversTransport:
-  insecureSkipVerify: true
+# NOTE: no global `serversTransport.insecureSkipVerify` — that would disable
+# backend TLS verification for EVERY https backend. Instead the internal
+# Traefik→nginx hop uses a scoped transport `legisell-internal@file`
+# (see traefik/config/dynamic.yml), referenced explicitly by the two nginx
+# services. Any future https backend verifies certs by default.
 
 api:
   dashboard: true
@@ -18,14 +21,18 @@ entryPoints:
           to: websecure
           scheme: https
           permanent: true
+      # Hardened: reject raw encoded path characters. `true` would forward
+      # %2f/%2e/%00 etc. unchanged to the backend, enabling split-view / path
+      # allowlist bypass (Traefik warns about exactly this). POS-API + admin
+      # need no encoded path chars.
       encodedCharacters:
-        allowEncodedSlash: true
-        allowEncodedBackSlash: true
-        allowEncodedNullCharacter: true
-        allowEncodedSemicolon: true
-        allowEncodedPercent: true
-        allowEncodedQuestionMark: true
-        allowEncodedHash: true
+        allowEncodedSlash: false
+        allowEncodedBackSlash: false
+        allowEncodedNullCharacter: false
+        allowEncodedSemicolon: false
+        allowEncodedPercent: false
+        allowEncodedQuestionMark: false
+        allowEncodedHash: false
   websecure:
     address: ":443"
     transport:
@@ -34,14 +41,18 @@ entryPoints:
         writeTimeout: 30s
         idleTimeout: 90s
     http:
+      # Hardened: reject raw encoded path characters. `true` would forward
+      # %2f/%2e/%00 etc. unchanged to the backend, enabling split-view / path
+      # allowlist bypass (Traefik warns about exactly this). POS-API + admin
+      # need no encoded path chars.
       encodedCharacters:
-        allowEncodedSlash: true
-        allowEncodedBackSlash: true
-        allowEncodedNullCharacter: true
-        allowEncodedSemicolon: true
-        allowEncodedPercent: true
-        allowEncodedQuestionMark: true
-        allowEncodedHash: true
+        allowEncodedSlash: false
+        allowEncodedBackSlash: false
+        allowEncodedNullCharacter: false
+        allowEncodedSemicolon: false
+        allowEncodedPercent: false
+        allowEncodedQuestionMark: false
+        allowEncodedHash: false
   # Public POS License API — TLS terminated by Traefik, cert auto-renewed via ACME.
   # Ports are published on the tailscale sidecar (network_mode: service:tailscale).
   poslicense:
@@ -52,14 +63,18 @@ entryPoints:
         writeTimeout: 30s
         idleTimeout: 90s
     http:
+      # Hardened: reject raw encoded path characters. `true` would forward
+      # %2f/%2e/%00 etc. unchanged to the backend, enabling split-view / path
+      # allowlist bypass (Traefik warns about exactly this). POS-API + admin
+      # need no encoded path chars.
       encodedCharacters:
-        allowEncodedSlash: true
-        allowEncodedBackSlash: true
-        allowEncodedNullCharacter: true
-        allowEncodedSemicolon: true
-        allowEncodedPercent: true
-        allowEncodedQuestionMark: true
-        allowEncodedHash: true
+        allowEncodedSlash: false
+        allowEncodedBackSlash: false
+        allowEncodedNullCharacter: false
+        allowEncodedSemicolon: false
+        allowEncodedPercent: false
+        allowEncodedQuestionMark: false
+        allowEncodedHash: false
 
 providers:
   docker:

@@ -1,5 +1,13 @@
 http:
   middlewares:
+    # Tailscale-only IP allowlist (CGNAT range). Reusable across routers that
+    # must never be reachable from the public internet (admin panel, dashboard).
+    # Usage: traefik.http.routers.myapp.middlewares=ts-only@file
+    ts-only:
+      ipAllowList:
+        sourceRange:
+          - "100.64.0.0/10"
+
     # www → non-www permanent redirect (301)
     # Usage in app labels: traefik.http.routers.myapp-www.middlewares=www-redirect@file
     www-redirect:
@@ -56,3 +64,26 @@ http:
         sourceCriterion:
           ipStrategy:
             depth: 1
+
+  # Scoped backend transport for the internal Traefik→nginx hop only.
+  # nginx serves a long-lived self-signed cert on 443/8443; skip verification
+  # for THIS hop without weakening verification globally.
+  # Usage: traefik.http.services.X.loadbalancer.serverstransport=legisell-internal@file
+  serversTransports:
+    legisell-internal:
+      insecureSkipVerify: true
+
+# Default TLS policy applied to every router without explicit tls.options.
+# Enforces a modern floor (TLS 1.2+) instead of relying on build defaults.
+tls:
+  options:
+    default:
+      minVersion: VersionTLS12
+      sniStrict: false
+      cipherSuites:
+        - TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256
+        - TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256
+        - TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384
+        - TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384
+        - TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305
+        - TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305

@@ -76,7 +76,10 @@ services:
       - "traefik.http.routers.traefik-dashboard.entrypoints=websecure"
       - "traefik.http.routers.traefik-dashboard.tls.certresolver=letsencrypt"
       - "traefik.http.routers.traefik-dashboard.service=api@internal"
-      - "traefik.http.routers.traefik-dashboard.middlewares=traefik-auth,security-headers@file,rate-limit-strict@file"
+      # ts-only@file gates the dashboard to the Tailscale CGNAT range — it is no
+      # longer reachable from the public internet. BasicAuth stays as a second
+      # factor. Reach it from a tailnet device (see NOTE on proxy DNS below).
+      - "traefik.http.routers.traefik-dashboard.middlewares=ts-only@file,traefik-auth,security-headers@file,rate-limit-strict@file"
       # BasicAuth middleware — credentials set via DASHBOARD_USERS in .env
       - "traefik.http.middlewares.traefik-auth.basicauth.users=${DASHBOARD_USERS}"
       # Dummy port to satisfy the Docker provider's validation since ports are on the sidecar
