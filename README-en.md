@@ -153,6 +153,34 @@ docker compose up -d
 
 Traefik auto-discovers the container and issues SSL certificates immediately.
 
+## Customer websites (one stack, many hosts)
+
+The KASSIO customer-website stack (`retail-website-template`) does not use
+container labels: one deployment serves every customer, so the hosts are not
+known at start-up. Instead it writes **one router file per customer site** into a
+Docker volume shared with this project:
+
+```
+website api  ──writes──→  traefik-dynamic volume  ──reads──→  Traefik file provider
+   (uid 10001, rw)          site-<slug>.yml                     directory /config
+```
+
+`make setup` creates that volume, sets its owner to the website api's uid, and
+copies this project's own `dynamic.yml` into it. The running container gets
+`dynamic.yml` bind-mounted **on top** of the volume, so editing it still
+hot-reloads; the copy inside the volume is the fallback for a start-up without
+that bind (Traefik would otherwise read an empty mountpoint file and lose every
+middleware, including `security-headers@file`).
+
+The volume is mounted read-write here for one technical reason: runc cannot
+create the mountpoint for the nested `dynamic.yml` inside a read-only mount.
+Traefik never writes to it.
+
+Nothing to do per customer — the website stack's own CLI creates and removes the
+routes (`make sites CMD="create laden"`, `… CMD="reconcile"` in that repo).
+Routes are derived state: if this volume is ever lost, `reconcile` rebuilds every
+file from the website database.
+
 ## Project structure
 
 ```
@@ -161,7 +189,9 @@ proxy/
 │   ├── traefik.yml          # Static config (entrypoints web/websecure/poslicense, providers, ACME)
 │   ├── config/
 │   │   └── dynamic.yml      # Middlewares (ts-only, security-headers, rate-limit…),
-│   │                        # legisell-internal backend transport, default TLS options
+│   │                        # legisell-internal backend transport, default TLS options.
+│   │                        # Mounted INTO the traefik-dynamic volume at /config,
+│   │                        # next to the customer-site routers written there.
 │   └── acme.json            # Let's Encrypt certificates — never commit this
 ├── docker-compose.yml
 ├── .env                     # Secrets — never commit this
@@ -177,7 +207,8 @@ proxy/
 
 | Command | Action |
 |---------|--------|
-| `make setup` | Create `.env` from template + initialize `acme.json` |
+| `make setup` | Create `.env` from template, initialize `acme.json`, create the `traefik-dynamic` volume |
+| `make sync-config` | Copy `dynamic.yml` into that volume (fallback copy; runs inside `setup`/`up`) |
 | `make up` | Start proxy in background |
 | `make down` | Stop proxy |
 | `make logs` | Stream Traefik logs |

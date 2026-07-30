@@ -67,7 +67,26 @@ services:
       - "--configfile=/traefik.yml"
     volumes:
       - ./traefik/traefik.yml:/traefik.yml:ro
-      - ./traefik/config:/config:ro
+      # The file provider watches exactly ONE directory, and two projects need to
+      # put files in it: this one (middlewares, TLS options) and the customer
+      # website stack (one router per customer site). So that directory IS the
+      # shared `traefik-dynamic` volume — read-only here, writable in the website
+      # api — and this project's own config is overlaid as a single file inside
+      # it. Docker applies nested mounts by target depth, so dynamic.yml wins
+      # inside the volume mount and is never written into the volume.
+      #
+      # No host path and no chown ritual: the volume is created by `make setup`
+      # here or by `make install` in the website repo, whichever runs first.
+      #
+      # The volume is mounted read-WRITE on purpose: runc cannot create the
+      # mountpoint for the nested dynamic.yml inside a read-only mount. Traefik
+      # never writes here. `make setup`/`make up` also copy dynamic.yml *into*
+      # the volume, so if this stack is ever started without the bind below,
+      # Traefik reads the last synced middleware definitions instead of an empty
+      # file — which would drop security-headers@file and break every router
+      # referencing it.
+      - traefik-dynamic:/config
+      - ./traefik/config/dynamic.yml:/config/dynamic.yml:ro
       - ./traefik/acme.json:/acme.json
     labels:
       - "traefik.enable=true"
@@ -95,3 +114,9 @@ networks:
 volumes:
   tailscale-state:
     name: tailscale-state
+  # Shared with the customer website stack (retail-website-template), which
+  # writes one router file per customer site into it. Declared external in BOTH
+  # projects so neither owns the other's lifecycle — `make setup` creates it.
+  traefik-dynamic:
+    external: true
+    name: traefik-dynamic
