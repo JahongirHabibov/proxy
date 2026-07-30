@@ -12,27 +12,43 @@ services:
     networks:
       - socket-proxy-internal
 
-  tailscale:
-    image: tailscale/tailscale:latest
-    container_name: tailscale
-    hostname: legisell-proxy-ts
-    # Explicit public upstream resolvers. Traefik shares this netns
-    # (network_mode: service:tailscale) and inherits this DNS. Without it the
-    # Docker embedded resolver (127.0.0.11) forwards to the host stub resolver
-    # (127.0.0.53 systemd-resolved), unreachable from the container netns →
-    # "server misbehaving" → ACME cannot resolve acme-v02.api.letsencrypt.org.
-    dns:
-      - 1.1.1.1
-      - 8.8.8.8
-    environment:
-      - TS_STATE_DIR=/var/lib/tailscale
-      - TS_USERSPACE=false
-    volumes:
-      - tailscale-state:/var/lib/tailscale
-      - /dev/net/tun:/dev/net/tun
-    cap_add:
-      - NET_ADMIN
-      - SYS_MODULE
+# The tailscale sidecar is gone (2026-07-30). It was removed because of what it
+# did to Traefik, not because of anything it did itself.
+#
+# Traefik used `network_mode: "service:tailscale"`, i.e. it had no network
+# namespace of its own and borrowed tailscale's. A namespace belongs to the
+# container that created it, so every time the tailscale container was recreated
+# or restarted, Traefik was left in an orphaned namespace: no DNS
+# (`lookup socket-proxy on 127.0.0.11:53: connection refused`), no route to the
+# Docker bridge (`dial 172.20.0.9:8000: network is unreachable`). Traefik keeps
+# running and every site behind it goes dark, which is the worst possible shape
+# for a failure — it looks like a routing problem in the apps.
+#
+# It happened twice in one day because the tailscale node key had expired and the
+# container was in a re-registration loop (RestartCount=8, "To authenticate,
+# visit ..."), so it recreated its namespace every few minutes.
+#
+# What it was actually used for on THIS host: exactly one thing, gating the
+# Traefik dashboard to the tailnet (`ts-only@file`). Not the SaaS↔LEGISELL
+# channels — those are public HTTPS with HMAC by design — and not any other
+# service here. That is a bad trade for a whole-proxy failure mode.
+#
+# To bring it back: restore docker-compose.yml.bak-20260730-1320, and authenticate
+# the node (`docker exec tailscale tailscale up`) BEFORE relying on it. The
+# tailscale-state volume was left in place.
+
+  traefik:
+    image: traefik:v3.7.5
+    container_name: traefik
+    restart: unless-stopped
+    depends_on:
+      - socket-proxy
+    # Its own namespace. This is the whole point of the change above.
+    networks:
+      - proxy-network
+      - socket-proxy-internal
+    # These ports were published on the tailscale sidecar and must live here now,
+    # or nothing listens on 80/443 at all.
     ports:
       - target: 80
         published: 80
@@ -47,19 +63,14 @@ services:
         published: 8443
         protocol: tcp
         mode: host
-    networks:
-      - proxy-network
-      - socket-proxy-internal
-    restart: unless-stopped
-
-  traefik:
-    image: traefik:v3.7.5
-    container_name: traefik
-    restart: unless-stopped
-    depends_on:
-      - socket-proxy
-      - tailscale
-    network_mode: "service:tailscale"
+    # Carried over from the removed sidecar, and load bearing: the Docker embedded
+    # resolver (127.0.0.11) forwards to the host stub resolver (127.0.0.53
+    # systemd-resolved), which is unreachable from a container namespace →
+    # "server misbehaving" → ACME cannot resolve acme-v02.api.letsencrypt.org and
+    # no certificate ever renews.
+    dns:
+      - 1.1.1.1
+      - 8.8.8.8
     environment:
       - TRAEFIK_CERTIFICATESRESOLVERS_LETSENCRYPT_ACME_EMAIL=${ACME_EMAIL}
       - TRAEFIK_PROVIDERS_DOCKER_NETWORK=${NETWORK_NAME:-proxy-network}
@@ -90,18 +101,28 @@ services:
       - ./traefik/acme.json:/acme.json
     labels:
       - "traefik.enable=true"
-      # Dashboard router — secured with BasicAuth
+      # ── Dashboard router: public, guarded by BasicAuth ────────────────────
+      # The tailnet gate (`ts-only@file`, ipAllowList 100.64.0.0/10) is gone with
+      # tailscale and is NOT replaced by an IP allowlist — deliberate operator
+      # decision (2026-07-30): the dashboard should be reachable from anywhere.
+      #
+      # What that means, so nobody has to rediscover it: BasicAuth is now the only
+      # thing between the internet and a page that lists every router, service and
+      # backend address on this host. It does not expose the Docker socket and it
+      # cannot change anything (the API is read-only here), but it is a map of the
+      # estate. The password is therefore the whole defence — keep it long, and
+      # rotate it if it was ever typed into a shared machine.
+      #
+      # rate-limit-strict@file stays in front of it: it is what makes guessing the
+      # password expensive rather than free.
       - "traefik.http.routers.traefik-dashboard.rule=Host(`${TRAEFIK_DOMAIN}`)"
       - "traefik.http.routers.traefik-dashboard.entrypoints=websecure"
       - "traefik.http.routers.traefik-dashboard.tls.certresolver=letsencrypt"
       - "traefik.http.routers.traefik-dashboard.service=api@internal"
-      # ts-only@file gates the dashboard to the Tailscale CGNAT range — it is no
-      # longer reachable from the public internet. BasicAuth stays as a second
-      # factor. Reach it from a tailnet device (see NOTE on proxy DNS below).
-      - "traefik.http.routers.traefik-dashboard.middlewares=ts-only@file,traefik-auth,security-headers@file,rate-limit-strict@file"
+      - "traefik.http.routers.traefik-dashboard.middlewares=traefik-auth,security-headers@file,rate-limit-strict@file"
       # BasicAuth middleware — credentials set via DASHBOARD_USERS in .env
       - "traefik.http.middlewares.traefik-auth.basicauth.users=${DASHBOARD_USERS}"
-      # Dummy port to satisfy the Docker provider's validation since ports are on the sidecar
+      # Dummy port to satisfy the Docker provider's validation.
       - "traefik.http.services.traefik-proxy.loadbalancer.server.port=8080"
 
 networks:
@@ -112,6 +133,9 @@ networks:
     internal: true
 
 volumes:
+  # Kept although no service uses it any more: it holds the tailnet node identity,
+  # and deleting it would turn "restore the backup file" into "re-authenticate the
+  # node". `docker compose down` does not remove named volumes without -v.
   tailscale-state:
     name: tailscale-state
   # Shared with the customer website stack (retail-website-template), which
