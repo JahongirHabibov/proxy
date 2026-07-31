@@ -39,8 +39,8 @@ sync-config:
 # allocated" — and the obvious next move, `docker compose up -d
 # --remove-orphans`, silently deletes containers this file no longer defines.
 # That is how the tailnet node was lost on 2026-07-31, taking admin.legisell.de
-# and api.legisell.de with it (`legisell-ts-only`, see legisell-deployment) and
-# leaving no error that pointed at the cause.
+# with it (`legisell-ts-only`, see legisell-deployment) and leaving no error that
+# pointed at the cause.
 #
 # So the conflict is named here, with the one safe move, before compose turns it
 # into a puzzle.
@@ -57,14 +57,44 @@ up: sync-config
 		echo "It removes whatever this compose file does not define, which is how"; \
 		echo "the tailnet node was lost once already."; \
 		echo ""; \
-		echo "Safe move — this file defines tailscale again (host mode, publishes"; \
-		echo "no ports), so removing the old container brings it straight back"; \
-		echo "with the same identity from the tailscale-state volume:"; \
+		echo "Named removal only, so nothing else goes with it:"; \
 		echo ""; \
 		echo "    docker rm -f $(PORT_HOLDER) && make up"; \
 		exit 1; \
 	fi
 	docker compose up -d
+	@$(MAKE) --no-print-directory check-tailnet
+
+# The tailnet is a dependency of this proxy that lives outside it:
+# admin.legisell.de is gated on 100.64.0.0/10 (`legisell-ts-only`, defined in
+# legisell-deployment; api.legisell.de is public and unaffected). Its A record
+# points AT a tailnet address, so the node being down breaks the name itself.
+# When the host node is logged out, the admin UI answers 403 to
+# everyone — which is indistinguishable from a correctly working allowlist, so the
+# outage is invisible from here. Hence a warning on every `up`, not a silent
+# assumption. A warning, not a failure: the proxy serves every public site fine
+# without a tailnet, and refusing to start would turn a partial outage into a
+# total one.
+.PHONY: check-tailnet
+check-tailnet:
+	@if ! command -v tailscale >/dev/null 2>&1; then \
+		echo "NOTE: no tailscale binary on this host — admin.legisell.de is"; \
+		echo "      tailnet-gated and will be unreachable."; \
+	elif ! tailscale status >/dev/null 2>&1; then \
+		echo "WARNING: the tailnet node is down or logged out."; \
+		echo "         admin.legisell.de is unreachable while this is true: its A"; \
+		echo "         record points at a tailnet address, and its allowlist only"; \
+		echo "         admits 100.64.0.0/10. The 403 looks exactly like a working"; \
+		echo "         allowlist. Bring it back with:"; \
+		echo ""; \
+		echo "             tailscale up --accept-dns=false"; \
+		echo ""; \
+		echo "         (--accept-dns=false keeps tailscaled off the host resolver"; \
+		echo "          that every container inherits.)"; \
+	else \
+		echo "tailnet: up as $$(tailscale ip -4 2>/dev/null | head -1) — check that this"; \
+		echo "         matches TAILSCALE_LOCAL_IP in legisell-deployment/.env"; \
+	fi
 
 down:
 	docker compose down
