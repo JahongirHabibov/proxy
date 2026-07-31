@@ -41,6 +41,20 @@ http:
           - application/xml
           - image/svg+xml
 
+    # Neither limit sets `sourceCriterion`, and that is the fix, not an omission.
+    #
+    # Both used to carry `ipStrategy: {depth: 1}`, which takes the client address
+    # out of X-Forwarded-For. Traefik is the edge here — nothing sits in front of
+    # it — so that header arrives straight from the client and is whatever the
+    # client says it is. An attacker sending a fresh forged value per request had
+    # no limit at all, while honest users behind one NAT were counted as a single
+    # source. It protected the wrong party in both directions.
+    #
+    # Without the key Traefik falls back to the real remote address, which cannot
+    # be forged over an established TCP connection. Reintroduce a depth ONLY if a
+    # real proxy is ever put in front of this one, and count from the right:
+    # depth = the number of hops you control.
+
     # General rate limit for public-facing services
     # 100 req/s avg, burst up to 200 — protects against light DoS
     # Usage: traefik.http.routers.myapp.middlewares=rate-limit@file
@@ -49,9 +63,6 @@ http:
         average: 100
         burst: 200
         period: 1s
-        sourceCriterion:
-          ipStrategy:
-            depth: 1
 
     # Strict rate limit for auth/admin endpoints (dashboard, login pages)
     # 20 req/s avg, burst 30 — prevents brute-force
@@ -61,9 +72,6 @@ http:
         average: 20
         burst: 30
         period: 1s
-        sourceCriterion:
-          ipStrategy:
-            depth: 1
 
   # Scoped backend transport for the internal Traefik→nginx hop only.
   # nginx serves a long-lived self-signed cert on 443/8443; skip verification

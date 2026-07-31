@@ -12,30 +12,78 @@ services:
     networks:
       - socket-proxy-internal
 
-# The tailscale sidecar is gone (2026-07-30). It was removed because of what it
-# did to Traefik, not because of anything it did itself.
-#
-# Traefik used `network_mode: "service:tailscale"`, i.e. it had no network
-# namespace of its own and borrowed tailscale's. A namespace belongs to the
-# container that created it, so every time the tailscale container was recreated
-# or restarted, Traefik was left in an orphaned namespace: no DNS
-# (`lookup socket-proxy on 127.0.0.11:53: connection refused`), no route to the
-# Docker bridge (`dial 172.20.0.9:8000: network is unreachable`). Traefik keeps
-# running and every site behind it goes dark, which is the worst possible shape
-# for a failure — it looks like a routing problem in the apps.
-#
-# It happened twice in one day because the tailscale node key had expired and the
-# container was in a re-registration loop (RestartCount=8, "To authenticate,
-# visit ..."), so it recreated its namespace every few minutes.
-#
-# What it was actually used for on THIS host: exactly one thing, gating the
-# Traefik dashboard to the tailnet (`ts-only@file`). Not the SaaS↔LEGISELL
-# channels — those are public HTTPS with HMAC by design — and not any other
-# service here. That is a bad trade for a whole-proxy failure mode.
-#
-# To bring it back: restore docker-compose.yml.bak-20260730-1320, and authenticate
-# the node (`docker exec tailscale tailscale up`) BEFORE relying on it. The
-# tailscale-state volume was left in place.
+  # The tailnet node. It is NOT a sidecar any more (2026-07-31) — that shape is
+  # what broke, and the fix was to separate the two, not to drop the tailnet.
+  #
+  # What went wrong before: Traefik ran with `network_mode: "service:tailscale"`,
+  # so it had no network namespace of its own and borrowed this container's. A
+  # namespace belongs to the container that created it, so every time this one was
+  # recreated, Traefik was left in an orphaned namespace: no DNS (`lookup
+  # socket-proxy on 127.0.0.11:53: connection refused`), no route to the Docker
+  # bridge (`dial 172.20.0.9:8000: network is unreachable`). Traefik kept running
+  # and every site behind it went dark — the worst shape a failure can take,
+  # because it looks like a routing bug in the apps. It happened twice in one day
+  # while the node key was expired and this container re-registered in a loop.
+  #
+  # `network_mode: host` removes the coupling completely. tailscaled configures
+  # the host's own `tailscale0` interface; Traefik keeps its own namespace and
+  # publishes 80/443/8443 with `mode: host`, i.e. on every host interface —
+  # including tailscale0. A tailnet client therefore reaches Traefik with its
+  # 100.64.0.0/10 source address intact, which is exactly what the allowlists
+  # below and in legisell-deployment match on. Restarting this container now
+  # affects nothing but the tailnet.
+  #
+  # What the tailnet gates on THIS host — two things, not one:
+  #   * the Traefik dashboard, if `ts-only@file` is put back on its router
+  #   * admin.legisell.de and api.legisell.de, via `legisell-ts-only`
+  #     (ipAllowList 100.64.0.0/10, defined in
+  #     external_repos/legisell-deployment/docker-compose.yml)
+  # Removing this node takes those off the air with no error naming the cause.
+  # An earlier version of this comment claimed it was "exactly one thing, the
+  # dashboard" — that was wrong, and acting on it cost an outage on 2026-07-31.
+  #
+  # NOT gated by the tailnet, and deliberately so: the SaaS↔LEGISELL channels and
+  # the customer websites. Those are public HTTPS with HMAC by design.
+  tailscale:
+    image: tailscale/tailscale:latest
+    container_name: tailscale
+    hostname: legisell-proxy-ts
+    restart: unless-stopped
+    # No `networks:` key — host mode owns the host's stack and the two are
+    # mutually exclusive. This container publishes nothing; it only adds an
+    # interface. That is why it cannot collide with Traefik over port 80 again.
+    network_mode: host
+    environment:
+      - TS_STATE_DIR=/var/lib/tailscale
+      # Kernel networking, not userspace: userspace mode would need a proxy for
+      # every inbound connection, and the whole point here is that tailnet
+      # traffic reaches the host's ports directly.
+      - TS_USERSPACE=false
+      # Do NOT let tailscaled take over the host resolver. With MagicDNS on, it
+      # rewrites /etc/resolv.conf on the host — which every other container
+      # inherits. The node is here for one allowlist, so it has no business
+      # touching name resolution for the rest of the estate.
+      - TS_EXTRA_ARGS=--accept-dns=false
+    volumes:
+      # The node identity. Reused on purpose: same key, same tailnet IP, so
+      # `TAILSCALE_LOCAL_IP` in legisell-deployment stays valid and the tailnet
+      # does not collect a second, stale device.
+      - tailscale-state:/var/lib/tailscale
+      - /dev/net/tun:/dev/net/tun
+    cap_add:
+      - NET_ADMIN
+      - SYS_MODULE
+    # An expired node key is what started the 2026-07-30 incident, and nothing
+    # made it visible: the container stayed "Up" while re-registering in a loop.
+    # `tailscale status` fails in that state, so `docker ps` now shows it.
+    # Prevent the state instead of watching for it: switch the node to
+    # "Disable key expiry" in the Tailscale admin console.
+    healthcheck:
+      test: ["CMD-SHELL", "tailscale status >/dev/null 2>&1 || exit 1"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
 
   traefik:
     image: traefik:v3.7.5
@@ -102,9 +150,11 @@ services:
     labels:
       - "traefik.enable=true"
       # ── Dashboard router: public, guarded by BasicAuth ────────────────────
-      # The tailnet gate (`ts-only@file`, ipAllowList 100.64.0.0/10) is gone with
-      # tailscale and is NOT replaced by an IP allowlist — deliberate operator
-      # decision (2026-07-30): the dashboard should be reachable from anywhere.
+      # The tailnet gate (`ts-only@file`, ipAllowList 100.64.0.0/10) is NOT on
+      # this router — deliberate operator decision (2026-07-30, reaffirmed
+      # 2026-07-31): the dashboard should be reachable from anywhere. The node
+      # is back and the middleware works again, so this is a choice, not a
+      # leftover; append `ts-only@file` below to reverse it.
       #
       # What that means, so nobody has to rediscover it: BasicAuth is now the only
       # thing between the internet and a page that lists every router, service and
@@ -133,9 +183,11 @@ networks:
     internal: true
 
 volumes:
-  # Kept although no service uses it any more: it holds the tailnet node identity,
-  # and deleting it would turn "restore the backup file" into "re-authenticate the
-  # node". `docker compose down` does not remove named volumes without -v.
+  # The tailnet node identity. Deleting it turns "recreate the container" into
+  # "re-authenticate the node, get a new IP, update TAILSCALE_LOCAL_IP in
+  # legisell-deployment and clean up a stale device in the admin console".
+  # `docker compose down` does not remove named volumes without -v — keep it
+  # that way.
   tailscale-state:
     name: tailscale-state
   # Shared with the customer website stack (retail-website-template), which

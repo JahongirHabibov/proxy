@@ -33,7 +33,37 @@ sync-config:
 		alpine:3.20 cp /source /target/dynamic.yml
 	@echo "dynamic.yml synced into $(DYNAMIC_VOLUME) (fallback copy)"
 
+# Traefik publishes 80/443/8443 itself now; in the old layout the tailscale
+# sidecar published them and Traefik borrowed its namespace. On a host still
+# running the old container, `up` therefore fails with "port is already
+# allocated" — and the obvious next move, `docker compose up -d
+# --remove-orphans`, silently deletes containers this file no longer defines.
+# That is how the tailnet node was lost on 2026-07-31, taking admin.legisell.de
+# and api.legisell.de with it (`legisell-ts-only`, see legisell-deployment) and
+# leaving no error that pointed at the cause.
+#
+# So the conflict is named here, with the one safe move, before compose turns it
+# into a puzzle.
+PORT_HOLDER = $(shell docker ps --filter publish=80 --format '{{.Names}}' 2>/dev/null | grep -v '^traefik$$' | head -1)
+
 up: sync-config
+	@if [ -n "$(PORT_HOLDER)" ]; then \
+		echo "REFUSING TO START: container '$(PORT_HOLDER)' already publishes port 80."; \
+		echo ""; \
+		echo "Traefik publishes 80/443/8443 itself, so the two cannot both run."; \
+		echo "A container from the old layout is still holding them."; \
+		echo ""; \
+		echo "Do NOT use 'docker compose up -d --remove-orphans' to clear this."; \
+		echo "It removes whatever this compose file does not define, which is how"; \
+		echo "the tailnet node was lost once already."; \
+		echo ""; \
+		echo "Safe move — this file defines tailscale again (host mode, publishes"; \
+		echo "no ports), so removing the old container brings it straight back"; \
+		echo "with the same identity from the tailscale-state volume:"; \
+		echo ""; \
+		echo "    docker rm -f $(PORT_HOLDER) && make up"; \
+		exit 1; \
+	fi
 	docker compose up -d
 
 down:
