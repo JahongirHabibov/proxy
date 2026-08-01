@@ -254,4 +254,5 @@ Changing it restarts the daemon and therefore every container on the host.
 | `tailscaled` masquerades forwarded tailnet traffic by default | `ipAllowList` on `100.64.0.0/10` sees the bridge gateway instead |
 | `docker logs traefik` returns the whole history | grep for errors with `--since`, or every old error looks current |
 | `cp` truncates its destination before writing | a reader landing in that gap sees an empty config and every `@file` middleware disappears at once — write to `.tmp` and `mv` |
+| Grepping a config for a WORD also matches the comment explaining its removal | check for the key: `grep -cE "^[[:space:]]+sourceCriterion:"`. The naive `grep -c sourceCriterion` returns 2 for the old file (two real keys) and 2 for the new one (two mentions in the comment) — it cannot tell them apart. Verify against the parser, or against the dashboard's Middlewares view, not against a substring |
 | A bind mount of a single FILE pins an inode | `git pull` replaces the file, so the container may keep reading the old one — or fall through to whatever the parent mount holds. Probe after every pull (below) |
