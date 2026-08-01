@@ -91,9 +91,21 @@ check-tailnet:
 		echo ""; \
 		echo "         (--accept-dns=false keeps tailscaled off the host resolver"; \
 		echo "          that every container inherits.)"; \
+	elif ! tailscale debug prefs 2>/dev/null | grep -q '"NoSNAT": true'; then \
+		echo "WARNING: tailnet node is up, but it is still masquerading."; \
+		echo "         tailscaled SNATs traffic it forwards into a local subnet, and a"; \
+		echo "         Docker bridge is such a subnet — so admin.legisell.de reaches"; \
+		echo "         Traefik as the bridge gateway (172.20.0.1) and its allowlist on"; \
+		echo "         100.64.0.0/10 refuses every tailnet client. The 403 is"; \
+		echo "         indistinguishable from the allowlist doing its job. Fix:"; \
+		echo ""; \
+		echo "             tailscale set --snat-subnet-routes=false"; \
+		echo ""; \
+		echo "         This setting lives on the host, in no repository, and a later"; \
+		echo "         'tailscale up' can reset it. See docs/shared-surface.md."; \
 	else \
-		echo "tailnet: up as $$(tailscale ip -4 2>/dev/null | head -1) — check that this"; \
-		echo "         matches TAILSCALE_LOCAL_IP in legisell-deployment/.env"; \
+		echo "tailnet: up as $$(tailscale ip -4 2>/dev/null | head -1), NoSNAT set — check"; \
+		echo "         that the address matches TAILSCALE_LOCAL_IP in legisell-deployment/.env"; \
 	fi
 
 down:

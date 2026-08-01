@@ -43,16 +43,28 @@ http:
 
     # Neither limit sets `sourceCriterion`, and that is the fix, not an omission.
     #
-    # Both used to carry `ipStrategy: {depth: 1}`, which takes the client address
-    # out of X-Forwarded-For. Traefik is the edge here — nothing sits in front of
-    # it — so that header arrives straight from the client and is whatever the
-    # client says it is. An attacker sending a fresh forged value per request had
-    # no limit at all, while honest users behind one NAT were counted as a single
-    # source. It protected the wrong party in both directions.
+    # Both used to carry `ipStrategy: {depth: 1}`, which reads the client address
+    # out of X-Forwarded-For. Traefik is the edge here, so a normal browser
+    # request carries no such header — and `depth: 1` against a header that is not
+    # there yields an EMPTY key. Every visitor of a site was therefore counted
+    # into one shared bucket: 100 req/s for the whole world, not per client. One
+    # crawler throttled every real user of that site, and a page with twenty
+    # assets needed only five simultaneous visitors to hit the ceiling.
     #
-    # Without the key Traefik falls back to the real remote address, which cannot
-    # be forged over an established TCP connection. Reintroduce a depth ONLY if a
-    # real proxy is ever put in front of this one, and count from the right:
+    # Measured on 2026-08-01 with a local Traefik v3.7.5, two client IPs, limit
+    # 2/s, 20 requests each:
+    #     depth: 1              → client A 0 allowed, client B 2   (one bucket)
+    #     no sourceCriterion    → client A 2 allowed, client B 2   (per client)
+    #
+    # The same test also refutes the reason first given for this change: forging
+    # X-Forwarded-For does NOT bypass `depth: 1`. Traefik does not trust inbound
+    # forwarded headers unless an entrypoint declares `forwardedHeaders.trustedIPs`,
+    # and none here does, so it overwrites them with the real peer address. The
+    # old setting was not a security hole; it was an availability one.
+    #
+    # Without the key Traefik uses the real remote address. Reintroduce a depth
+    # ONLY if a real proxy is ever put in front of this one, declare its address
+    # in `forwardedHeaders.trustedIPs` at the same time, and count from the right:
     # depth = the number of hops you control.
 
     # General rate limit for public-facing services

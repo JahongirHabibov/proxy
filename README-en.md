@@ -2,6 +2,17 @@
 
 Docker-based reverse proxy using Traefik v3. Routes multiple domains to separate app containers on a single server. Handles SSL automatically via Let's Encrypt.
 
+> **Before changing anything in this repository, read
+> [`docs/shared-surface.md`](docs/shared-surface.md).**
+>
+> One Traefik fronts every web service on this host, and the entrypoints,
+> middlewares, TLS options and certificate resolver defined here are shared by all
+> of them. A change that looks local to one service silently changes every other.
+> That document lists what is shared, who consumes it, how to verify a change
+> against each class of consumer, and the host-level dependencies (tailscaled and
+> its SNAT setting, DNS records pointing into the tailnet) that no repository
+> captures.
+
 ## Features
 
 - Automatic HTTPS with Let's Encrypt (free, auto-renews) — single cert lifecycle for **all** entrypoints
