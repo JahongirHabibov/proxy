@@ -172,10 +172,18 @@ docker logs --since 10m traefik 2>&1 | grep -i acme | grep -i error || echo "no 
 #    bind mount pins an inode. git replaces the file rather than editing it, so
 #    the running container can end up reading a stale inode — edits would then
 #    stop hot-reloading, silently, until the next container recreation.
-echo "# probe $(date +%s)" >> traefik/config/dynamic.yml
+echo "# probe $(date +%s)" >> traefik/config/dynamic.yml   # appends: same inode
 sleep 3
-docker exec traefik tail -1 /config/dynamic.yml       # must show the probe line
-sed -i '$d' traefik/config/dynamic.yml                # remove it again
+docker exec traefik tail -1 /config/dynamic.yml           # must show the probe line
+
+# Undo WITHOUT replacing the file. `sed -i` writes a new file and renames over
+# the old one, which swaps the inode and re-breaks the very mount this probe
+# just proved healthy. `cat >` truncates and rewrites in place, so the inode —
+# and the bind mount — survive.
+head -n -1 traefik/config/dynamic.yml > /tmp/dyn.probe \
+  && cat /tmp/dyn.probe > traefik/config/dynamic.yml \
+  && rm /tmp/dyn.probe
+docker exec traefik tail -1 /config/dynamic.yml           # probe line gone again
 ```
 
 If the probe does not appear, the mount is stale. Recreate just this container —
