@@ -166,6 +166,23 @@ curl -sI https://proxy.legisell.de | head -1                  # 401
 
 # 7. Certificates still renewing
 docker logs --since 10m traefik 2>&1 | grep -i acme | grep -i error || echo "no ACME errors"
+
+# 8. After a pull that changed dynamic.yml: is the bind mount still live?
+#    `traefik/config/dynamic.yml` is bind-mounted as a single FILE, and a file
+#    bind mount pins an inode. git replaces the file rather than editing it, so
+#    the running container can end up reading a stale inode — edits would then
+#    stop hot-reloading, silently, until the next container recreation.
+echo "# probe $(date +%s)" >> traefik/config/dynamic.yml
+sleep 3
+docker exec traefik tail -1 /config/dynamic.yml       # must show the probe line
+sed -i '$d' traefik/config/dynamic.yml                # remove it again
+```
+
+If the probe does not appear, the mount is stale. Recreate just this container —
+no other service is touched, and published ports return within a second:
+
+```bash
+docker compose up -d --force-recreate traefik
 ```
 
 If a step cannot be run, say so in the change notes rather than assuming it
@@ -236,3 +253,5 @@ Changing it restarts the daemon and therefore every container on the host.
 | Let's Encrypt refuses any name without a dot | a `Host(localhost)` router orders forever and burns the account's order budget |
 | `tailscaled` masquerades forwarded tailnet traffic by default | `ipAllowList` on `100.64.0.0/10` sees the bridge gateway instead |
 | `docker logs traefik` returns the whole history | grep for errors with `--since`, or every old error looks current |
+| `cp` truncates its destination before writing | a reader landing in that gap sees an empty config and every `@file` middleware disappears at once — write to `.tmp` and `mv` |
+| A bind mount of a single FILE pins an inode | `git pull` replaces the file, so the container may keep reading the old one — or fall through to whatever the parent mount holds. Probe after every pull (below) |

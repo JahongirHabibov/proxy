@@ -26,12 +26,24 @@ setup:
 # gets the file bind-mounted on top (so edits still hot-reload); this copy is the
 # fallback for a start-up without that bind, where Traefik would otherwise read
 # an empty mountpoint file and lose every middleware.
+#
+# Written to a temporary name and RENAMED, never copied in place. Traefik watches
+# this directory, and `cp` truncates the destination before it writes: a reader
+# landing in that gap sees an empty file, which parses fine and defines nothing.
+# Every router naming security-headers@file, compress@file or rate-limit@file is
+# then dropped — that is every public site on this host — until the next reload.
+# Observed on 2026-08-01 as a burst of `middleware "rate-limit@file" does not
+# exist` across every project at one timestamp, gone a second later.
+#
+# `.tmp` and not `.yml.tmp`: the file provider only parses .yml/.yaml/.toml/.json,
+# so the half-written file is never read at all. rename(2) inside one filesystem
+# is atomic — the reader sees either the old file or the new one.
 sync-config:
 	@docker run --rm \
 		-v $(DYNAMIC_VOLUME):/target \
 		-v "$(CURDIR)/traefik/config/dynamic.yml":/source:ro \
-		alpine:3.20 cp /source /target/dynamic.yml
-	@echo "dynamic.yml synced into $(DYNAMIC_VOLUME) (fallback copy)"
+		alpine:3.20 sh -c 'cp /source /target/dynamic.tmp && mv /target/dynamic.tmp /target/dynamic.yml'
+	@echo "dynamic.yml synced into $(DYNAMIC_VOLUME) (atomic rename, fallback copy)"
 
 # Traefik publishes 80/443/8443 itself now; in the old layout the tailscale
 # sidecar published them and Traefik borrowed its namespace. On a host still
