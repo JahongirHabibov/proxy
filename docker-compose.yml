@@ -29,9 +29,17 @@ services:
 # 127.0.0.11:53: connection refused`), no route to the Docker bridge — while
 # Traefik kept running and every site behind it went dark. Traefik now owns its
 # namespace and publishes 80/443/8443 with `mode: host`, i.e. on every host
-# interface including tailscale0. A tailnet client reaches it with its
-# 100.64.0.0/10 source address intact, which is what the allowlists match on.
-# Nothing in this file depends on the tailnet any more.
+# interface including tailscale0.
+#
+# MEASURED CONSEQUENCE, 2026-08-01 — do not assume otherwise: traffic arriving on
+# tailscale0 reaches Traefik with its source address rewritten to the bridge
+# gateway (172.20.0.1), while traffic on the public interface keeps its real
+# client address. An earlier version of this comment claimed the tailnet source
+# survived; it does not. The sidecar had tailscale0 *inside* Traefik's own
+# namespace with no NAT in between, which is why `legisell-ts-only` worked then
+# and returns 403 to every tailnet client now. The gate depended on the sidecar
+# shape, not merely on the node existing — see the note on that middleware in
+# external_repos/legisell-deployment before changing it.
 #
 # What the tailnet gates on THIS host — one thing today, and it is not the one
 # the old comment named:
