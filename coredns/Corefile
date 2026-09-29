@@ -16,7 +16,9 @@ admin.legisell.de {
         rcode NXDOMAIN
         fallthrough
     }
-    hosts {
+    # /dev/null: inline entry only. Without a file argument `hosts` also reads
+    # /etc/hosts, which under network_mode: host is the host's own file.
+    hosts /dev/null {
         {$TAILNET_IP} admin.legisell.de
         ttl 60
         no_reverse
