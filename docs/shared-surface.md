@@ -27,6 +27,7 @@ This document exists so the next change does not.
 | Network `proxy-network` | `docker-compose.yml` | every app container attached to it |
 | Volume `traefik-dynamic` | shared with `retail-website-template` | the file-provider directory itself |
 | `tailscaled` on the host | not in any repo | every tailnet-gated router |
+| `tailnet-dns` (CoreDNS) + its split-DNS entry in the Tailscale console | `coredns/Corefile`; the console entry is in no repo | admin.legisell.de on every device without an `/etc/hosts` pin (phones) |
 | | | |
 | A project's own routers, services, middlewares | that project's labels | that project only |
 
@@ -234,15 +235,26 @@ on the node existing.**
 
 ### DNS records that point into the tailnet
 
-`admin.legisell.de` resolves to `100.69.235.112` — a CGNAT address, unroutable
-from the public internet. That is the first layer of protection; the allowlist is
-the second. It also means the record has to be corrected whenever the node's
-tailnet address changes, and `TAILSCALE_LOCAL_IP` in `legisell-deployment/.env`
-along with it.
+`admin.legisell.de` has two answers:
 
-Do not pin these names in `/etc/hosts` on workstations. A pin hides the real
-state: on 2026-08-01 a stale pin made a working DNS change look broken, and
-flushing caches could not help because a pin is not a cache.
+- **Public** (Hetzner DNS): `204.168.175.6`, the server's public address. It
+  has to be public — Let's Encrypt validates HTTP-01 against it. A public client
+  that follows it is refused by the allowlist (403). Pointing the public record
+  at the tailnet address broke every renewal from 2026-08-22 until it was
+  reverted on 2026-09-18.
+- **Tailnet**: `100.69.235.112`, answered by the `tailnet-dns` service in this
+  repo and handed to tailnet devices through a split-DNS nameserver entry in the
+  Tailscale admin console (DNS → nameserver `100.69.235.112`, restricted to
+  `admin.legisell.de`). That entry lives in no repository. If the tailnet
+  address changes, update `TAILNET_IP` in `.env` here, the console entry, and
+  `TAILSCALE_LOCAL_IP` in `legisell-deployment/.env`.
+
+If `tailnet-dns` is down, phones lose the admin panel; a workstation with an
+`/etc/hosts` pin does not notice. Probe: `make dns-check`.
+
+Prefer the split DNS over `/etc/hosts` pins. A pin hides the real state: on
+2026-08-01 a stale pin made a working DNS change look broken, and flushing
+caches could not help because a pin is not a cache.
 
 ### Docker
 

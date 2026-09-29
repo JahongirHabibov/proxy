@@ -6,7 +6,7 @@ SHELL := /bin/bash
 DYNAMIC_VOLUME   := traefik-dynamic
 WEBSITE_API_UID  := 10001
 
-.PHONY: setup up down logs restart gen-password sync-config
+.PHONY: setup up down logs restart gen-password sync-config dns-check
 
 setup:
 	@test -f .env || (cp .env.example .env && echo "Created .env from .env.example — fill in your values before running 'make up'")
@@ -138,3 +138,13 @@ gen-password:
 	echo ""; \
 	echo "Paste this into DASHBOARD_USERS in .env:"; \
 	echo "$$escaped"
+
+# Probe for the tailnet-dns service. Reads TAILNET_IP from .env without
+# printing anything else from it. Expected: the address, REFUSED, NOERROR.
+dns-check:
+	@command -v dig >/dev/null || { echo "dig missing: sudo apt install dnsutils"; exit 1; }
+	@ip=$$(grep -E '^TAILNET_IP=' .env | cut -d= -f2); \
+	test -n "$$ip" || { echo "TAILNET_IP not set in .env"; exit 1; }; \
+	echo "admin.legisell.de A    -> $$(dig +short +time=2 +tries=1 @$$ip admin.legisell.de A)"; \
+	echo "example.com A          -> $$(dig +time=2 +tries=1 @$$ip example.com A | grep -o 'status: [A-Z]*')"; \
+	echo "admin.legisell.de AAAA -> $$(dig +time=2 +tries=1 @$$ip admin.legisell.de AAAA | grep -o 'status: [A-Z]*')"

@@ -115,9 +115,16 @@ the two with split DNS — two answers for the same name:
    (their source IP is not in `100.64.0.0/10`).
 
 2. **Tailnet override → server Tailscale IP** (e.g. `100.64.0.10`).
-   Tailnet devices resolve the name to the server's Tailscale IP and route over
-   the VPN. Traefik then sees a source IP inside `100.64.0.0/10`, so `ts-only`
-   lets the request through.
+   The `tailnet-dns` service (CoreDNS, `coredns/Corefile`) answers the name
+   with the server's Tailscale IP. It listens on the tailscale interface only
+   and refuses every other name. In the Tailscale admin console, **DNS → Add
+   nameserver → Custom → `<TAILNET_IP>`, "Restrict to domain" = the host name**
+   makes every tailnet device with "Use Tailscale DNS" ask it — phones
+   included, which cannot carry an `/etc/hosts` entry. Traefik then sees a
+   source IP inside `100.64.0.0/10`, so `ts-only` lets the request through.
+
+   Laptops may keep an `/etc/hosts` line with the same address; both paths
+   give the same answer. Probe: `make dns-check`.
 
 Result: the service is invisible/blocked from the public internet, reachable
 only from the Tailnet, and still serves a browser-trusted Let's Encrypt cert.
@@ -125,9 +132,9 @@ only from the Tailnet, and still serves a browser-trusted Let's Encrypt cert.
 **Add a new Tailnet-only host:**
 
 - Public DNS: `A  proxy.example.com → 203.0.113.10` (public IP, for Let's Encrypt).
-- Tailnet override: `proxy.example.com → 100.64.0.10` (server Tailscale IP) via
-  your Tailscale split-DNS / MagicDNS config — the same place the admin host is
-  overridden.
+- Tailnet override: add `<IP> <host>` to the `hosts` block in
+  `coredns/Corefile` (or a second zone block), then add the host as a
+  restricted domain on the same nameserver in the Tailscale console.
 - Attach `ts-only@file` to the router's middleware chain.
 
 **Quick local test before configuring DNS** — pin the name to the server's
