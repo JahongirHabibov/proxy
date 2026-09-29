@@ -12,6 +12,33 @@ services:
     networks:
       - socket-proxy-internal
 
+  # Tailnet-only DNS: answers admin.legisell.de with this host's tailscale
+  # address, for devices that cannot carry an /etc/hosts override (phones).
+  # Registered as a split-DNS nameserver in the Tailscale admin console.
+  #
+  # Host network, bound to the tailscale interface by the Corefile: a published
+  # port would arrive SNATed (see the note below) and a bind to 0.0.0.0 would
+  # expose a resolver on the public address. If the interface does not exist
+  # yet (docker started before tailscaled), CoreDNS exits and restart brings it
+  # back once it does — it never falls back to another interface.
+  #
+  # No healthcheck: the image has no shell. `make dns-check` is the probe.
+  tailnet-dns:
+    image: coredns/coredns:1.12.1
+    container_name: tailnet-dns
+    restart: unless-stopped
+    network_mode: host
+    command: ["-conf", "/Corefile"]
+    environment:
+      TAILNET_IP: ${TAILNET_IP:?set TAILNET_IP in .env}
+      TAILNET_DNS_BIND: ${TAILNET_DNS_BIND:-tailscale0}
+    volumes:
+      - ./coredns/Corefile:/Corefile:ro
+    read_only: true
+    cap_drop: [ALL]
+    cap_add: [NET_BIND_SERVICE]
+    security_opt: [no-new-privileges:true]
+
 # ── The tailnet node is NOT here, and must not be put here ───────────────────
 #
 # `tailscaled` runs on the host, managed by systemd (installed from the Tailscale

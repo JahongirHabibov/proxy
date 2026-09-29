@@ -1,0 +1,33 @@
+# Tailnet-only DNS for names that must resolve to this host's tailscale address.
+#
+# Registered in the Tailscale admin console as a split-DNS nameserver for
+# admin.legisell.de. Phones cannot carry an /etc/hosts override, and the public
+# A record must keep pointing at the public IP for Let's Encrypt HTTP-01.
+#
+# Bound to the tailscale interface only. Not an open resolver: every other name
+# is REFUSED, nothing is forwarded.
+
+admin.legisell.de {
+    bind {$TAILNET_DNS_BIND}
+    # Names below the host do not exist: NXDOMAIN from here, not a SERVFAIL
+    # from `hosts` finding no next plugin. Runs before `hosts` (plugin order).
+    template ANY ANY admin.legisell.de {
+        match "^.+[.]admin[.]legisell[.]de[.]$"
+        rcode NXDOMAIN
+        fallthrough
+    }
+    hosts {
+        {$TAILNET_IP} admin.legisell.de
+        ttl 60
+        no_reverse
+    }
+    errors
+}
+
+. {
+    bind {$TAILNET_DNS_BIND}
+    acl {
+        block
+    }
+    errors
+}
