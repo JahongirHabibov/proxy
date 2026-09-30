@@ -28,10 +28,35 @@ http:
         browserXssFilter: true
         referrerPolicy: "strict-origin-when-cross-origin"
 
-    # gzip + brotli compression for text responses (replaces nginx gzip)
+    # zstd / brotli / gzip compression for text responses (replaces nginx gzip)
     # Usage in app labels: traefik.http.routers.myapp.middlewares=compress@file
+    #
+    # `encodings` is spelled out, and its order is the preference when a browser
+    # offers several at equal weight. Measured on 2026-09-30 with a local Traefik
+    # v3.7.5 in front of a 1.25 MB Next.js catalog page:
+    #
+    #     Accept-Encoding                  no `encodings` key   [zstd, br, gzip]
+    #     Chrome  gzip, deflate, br, zstd  zstd  98 KB          zstd  71 KB
+    #     Safari  gzip, deflate, br        gzip 108 KB          br    67 KB
+    #     gzip, deflate                    gzip 108 KB          gzip 108 KB
+    #
+    # Without the key Safari — every iPhone — was never sent brotli, and Chrome's
+    # zstd came out a third larger. zstd stays first: that is what Chrome already
+    # got, so for Chrome only the size changes. A client offers only what it can
+    # decode, so no consumer is sent an encoding new to it. Streaming survives: a
+    # page that sends its shell first still arrives in pieces, the first after
+    # ~20 ms, whichever encoding is chosen.
+    #
+    # A response that arrives already encoded is passed through untouched, so an
+    # app that compresses itself (Next.js does gzip by default) never gets these.
+    # `text/x-component` is Next.js's RSC payload — every soft navigation of an
+    # app that leaves compression to this middleware (`compress: false`).
     compress:
       compress:
+        encodings:
+          - zstd
+          - br
+          - gzip
         includedContentTypes:
           - text/html
           - text/css
@@ -40,6 +65,7 @@ http:
           - application/json
           - application/xml
           - image/svg+xml
+          - text/x-component
 
     # Neither limit sets `sourceCriterion`, and that is the fix, not an omission.
     #
