@@ -115,8 +115,10 @@ the two with split DNS — two answers for the same name:
    (their source IP is not in `100.64.0.0/10`).
 
 2. **Tailnet override → server Tailscale IP** (e.g. `100.64.0.10`).
-   The `tailnet-dns` service (CoreDNS, `coredns/Corefile`) answers the name
-   with the server's Tailscale IP. It listens on the tailscale interface only
+   The optional `tailnet-dns` service (CoreDNS, `coredns/Corefile`) answers
+   `TAILNET_DNS_NAME` with the server's Tailscale IP (`TAILNET_IP`). It is
+   off by default and starts only on hosts that set
+   `COMPOSE_PROFILES=tailnet-dns` in `.env`; other hosts need none of it. It listens on the tailscale interface only
    and refuses every other name. In the Tailscale admin console, **DNS → Add
    nameserver → Custom → `<TAILNET_IP>`, "Restrict to domain" = the host name**
    makes every tailnet device with "Use Tailscale DNS" ask it — phones
@@ -132,9 +134,10 @@ only from the Tailnet, and still serves a browser-trusted Let's Encrypt cert.
 **Add a new Tailnet-only host:**
 
 - Public DNS: `A  proxy.example.com → 203.0.113.10` (public IP, for Let's Encrypt).
-- Tailnet override: add `<IP> <host>` to the `hosts` block in
-  `coredns/Corefile` (or a second zone block), then add the host as a
-  restricted domain on the same nameserver in the Tailscale console.
+- Tailnet override: on that host set `COMPOSE_PROFILES=tailnet-dns`,
+  `TAILNET_IP` and `TAILNET_DNS_NAME` in `.env`, run `make up`, then add the
+  host as a restricted domain on the nameserver `<TAILNET_IP>` in the
+  Tailscale console. One name per host; no host name goes into the Corefile.
 - Attach `ts-only@file` to the router's middleware chain.
 
 **Quick local test before configuring DNS** — pin the name to the server's

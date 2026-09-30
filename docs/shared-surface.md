@@ -27,7 +27,7 @@ This document exists so the next change does not.
 | Network `proxy-network` | `docker-compose.yml` | every app container attached to it |
 | Volume `traefik-dynamic` | shared with `retail-website-template` | the file-provider directory itself |
 | `tailscaled` on the host | not in any repo | every tailnet-gated router |
-| `tailnet-dns` (CoreDNS) + its split-DNS entry in the Tailscale console | `coredns/Corefile`; the console entry is in no repo | admin.legisell.de on every device without an `/etc/hosts` pin (phones) |
+| `tailnet-dns` (CoreDNS, opt-in via `COMPOSE_PROFILES=tailnet-dns`) + its split-DNS entry in the Tailscale console | `coredns/Corefile`, name and address from the host's `.env`; the console entry is in no repo | only hosts with the profile: their `TAILNET_DNS_NAME` on every device without an `/etc/hosts` pin (phones) |
 | | | |
 | A project's own routers, services, middlewares | that project's labels | that project only |
 
@@ -245,7 +245,10 @@ on the node existing.**
 - **Tailnet**: `100.69.235.112`, answered by the `tailnet-dns` service in this
   repo and handed to tailnet devices through a split-DNS nameserver entry in the
   Tailscale admin console (DNS → nameserver `100.69.235.112`, restricted to
-  `admin.legisell.de`). That entry lives in no repository. If the tailnet
+  `admin.legisell.de`). That entry lives in no repository. On the Legisell
+  host only, `.env` here sets `COMPOSE_PROFILES=tailnet-dns`,
+  `TAILNET_IP=100.69.235.112` and `TAILNET_DNS_NAME=admin.legisell.de`; other
+  hosts leave all three unset and do not run the service. If the tailnet
   address changes, update `TAILNET_IP` in `.env` here, the console entry, and
   `TAILSCALE_LOCAL_IP` in `legisell-deployment/.env`.
 

@@ -74,6 +74,7 @@ up: sync-config
 		echo "    docker rm -f $(PORT_HOLDER) && make up"; \
 		exit 1; \
 	fi
+	@$(MAKE) --no-print-directory check-tailnet-dns
 	docker compose up -d
 	@$(MAKE) --no-print-directory check-tailnet
 
@@ -139,12 +140,29 @@ gen-password:
 	echo "Paste this into DASHBOARD_USERS in .env:"; \
 	echo "$$escaped"
 
-# Probe for the tailnet-dns service. Reads TAILNET_IP from .env without
-# printing anything else from it. Expected: the address, REFUSED, NOERROR.
+# tailnet-dns is opt-in per host (COMPOSE_PROFILES=tailnet-dns in .env, or in
+# the shell environment, which compose also honours). Hosts without the profile
+# skip both targets below. Only the three keys are read from .env; nothing else
+# from it is printed.
+TAILNET_DNS_ON = $(shell { grep -E '^COMPOSE_PROFILES=' .env 2>/dev/null | cut -d= -f2-; echo "$$COMPOSE_PROFILES"; } | tr ", '\"" '\n\n\n\n' | grep -qx tailnet-dns && echo 1)
+TAILNET_IP_ENV = $(shell grep -E '^TAILNET_IP=' .env 2>/dev/null | cut -d= -f2- | sed "s/^[\"']//; s/[\"']$$//")
+TAILNET_DNS_NAME_ENV = $(shell grep -E '^TAILNET_DNS_NAME=' .env 2>/dev/null | cut -d= -f2- | sed "s/^[\"']//; s/[\"']$$//")
+
+# With the profile on, refuse to start a resolver that has no address or name:
+# CoreDNS would come up with an empty zone and answer nothing.
+.PHONY: check-tailnet-dns
+check-tailnet-dns:
+	@if [ -n "$(TAILNET_DNS_ON)" ]; then \
+		test -n "$(TAILNET_IP_ENV)" || { echo "REFUSING TO START: profile tailnet-dns is on, but TAILNET_IP is not set in .env"; exit 1; }; \
+		test -n "$(TAILNET_DNS_NAME_ENV)" || { echo "REFUSING TO START: profile tailnet-dns is on, but TAILNET_DNS_NAME is not set in .env"; exit 1; }; \
+	fi
+
+# Probe for the tailnet-dns service. Expected: the address, REFUSED, NOERROR.
 dns-check:
-	@command -v dig >/dev/null || { echo "dig missing: sudo apt install dnsutils"; exit 1; }
-	@ip=$$(grep -E '^TAILNET_IP=' .env | cut -d= -f2); \
-	test -n "$$ip" || { echo "TAILNET_IP not set in .env"; exit 1; }; \
-	echo "admin.legisell.de A    -> $$(dig +short +time=2 +tries=1 @$$ip admin.legisell.de A)"; \
-	echo "example.com A          -> $$(dig +time=2 +tries=1 @$$ip example.com A | grep -o 'status: [A-Z]*')"; \
-	echo "admin.legisell.de AAAA -> $$(dig +time=2 +tries=1 @$$ip admin.legisell.de AAAA | grep -o 'status: [A-Z]*')"
+	@if [ -z "$(TAILNET_DNS_ON)" ]; then echo "tailnet-dns: not enabled on this host (COMPOSE_PROFILES), nothing to check"; exit 0; fi; \
+	command -v dig >/dev/null || { echo "dig missing: sudo apt install dnsutils"; exit 1; }; \
+	ip="$(TAILNET_IP_ENV)"; name="$(TAILNET_DNS_NAME_ENV)"; \
+	test -n "$$ip" -a -n "$$name" || { echo "TAILNET_IP or TAILNET_DNS_NAME not set in .env"; exit 1; }; \
+	echo "$$name A    -> $$(dig +short +time=2 +tries=1 @$$ip $$name A)"; \
+	echo "example.com A -> $$(dig +time=2 +tries=1 @$$ip example.com A | grep -o 'status: [A-Z]*')"; \
+	echo "$$name AAAA -> $$(dig +time=2 +tries=1 @$$ip $$name AAAA | grep -o 'status: [A-Z]*')"

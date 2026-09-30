@@ -12,9 +12,16 @@ services:
     networks:
       - socket-proxy-internal
 
-  # Tailnet-only DNS: answers admin.legisell.de with this host's tailscale
+  # Tailnet-only DNS: answers TAILNET_DNS_NAME with this host's tailscale
   # address, for devices that cannot carry an /etc/hosts override (phones).
   # Registered as a split-DNS nameserver in the Tailscale admin console.
+  #
+  # Opt-in per host: this repo runs on several VPS and only some want it. The
+  # service starts only with COMPOSE_PROFILES=tailnet-dns in .env. Without the
+  # profile compose ignores it, and the variables below may stay unset — hence
+  # `:-` and not `:?`: compose interpolates every service, active or not, so a
+  # `:?` here would stop `make up` on every host. `make up` checks them instead
+  # when the profile is on.
   #
   # Host network, bound to the tailscale interface by the Corefile: a published
   # port would arrive SNATed (see the note below) and a bind to 0.0.0.0 would
@@ -26,11 +33,13 @@ services:
   tailnet-dns:
     image: coredns/coredns:1.12.1
     container_name: tailnet-dns
+    profiles: [tailnet-dns]
     restart: unless-stopped
     network_mode: host
     command: ["-conf", "/Corefile"]
     environment:
-      TAILNET_IP: ${TAILNET_IP:?set TAILNET_IP in .env}
+      TAILNET_IP: ${TAILNET_IP:-}
+      TAILNET_DNS_NAME: ${TAILNET_DNS_NAME:-}
       TAILNET_DNS_BIND: ${TAILNET_DNS_BIND:-tailscale0}
     volumes:
       - ./coredns/Corefile:/Corefile:ro

@@ -1,25 +1,31 @@
 # Tailnet-only DNS for names that must resolve to this host's tailscale address.
 #
 # Registered in the Tailscale admin console as a split-DNS nameserver for
-# admin.legisell.de. Phones cannot carry an /etc/hosts override, and the public
+# TAILNET_DNS_NAME. Phones cannot carry an /etc/hosts override, and the public
 # A record must keep pointing at the public IP for Let's Encrypt HTTP-01.
+#
+# Host-specific values come from .env (TAILNET_DNS_NAME, TAILNET_IP): this repo
+# is shared by several VPS, so no host name is written here. The service runs
+# only where COMPOSE_PROFILES=tailnet-dns is set.
 #
 # Bound to the tailscale interface only. Not an open resolver: every other name
 # is REFUSED, nothing is forwarded.
 
-admin.legisell.de {
+{$TAILNET_DNS_NAME} {
     bind {$TAILNET_DNS_BIND}
     # Names below the host do not exist: NXDOMAIN from here, not a SERVFAIL
     # from `hosts` finding no next plugin. Runs before `hosts` (plugin order).
-    template ANY ANY admin.legisell.de {
-        match "^.+[.]admin[.]legisell[.]de[.]$"
+    # The name's dots stay unescaped in the regex; harmless, because this zone
+    # only ever sees the name itself or names below it.
+    template ANY ANY {$TAILNET_DNS_NAME} {
+        match "^.+[.]{$TAILNET_DNS_NAME}[.]$"
         rcode NXDOMAIN
         fallthrough
     }
     # /dev/null: inline entry only. Without a file argument `hosts` also reads
     # /etc/hosts, which under network_mode: host is the host's own file.
     hosts /dev/null {
-        {$TAILNET_IP} admin.legisell.de
+        {$TAILNET_IP} {$TAILNET_DNS_NAME}
         ttl 60
         no_reverse
     }
